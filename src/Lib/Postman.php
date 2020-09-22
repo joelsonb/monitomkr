@@ -4,44 +4,45 @@ namespace MonitoMkr\Lib;
 use MonitoLib\App;
 use MonitoLib\Functions;
 
-class Postman extends Creator
+class Postman
 {
     const VERSION = '1.0.0';
 
-    public function create ($table)
+    public function create($table)
     {
-        // \MonitoLib\Dev::pre($table);
+        $class = $table['class'];
+        $url   = $table['url'];
+
         $header = [
             [
-                'key' => 'Content-Type',
-                'name' => 'Content-Type',
+                'key'   => 'Content-Type',
+                'name'  => 'Content-Type',
                 'value' => 'application/json',
-                'type' => 'text'
+                'type'  => 'text'
             ]
         ];
         $createBody = [
             'mode' => 'raw',
-            'raw' => ''
+            'raw'  => ''
         ];
         $putBody = [
             'mode' => 'raw',
-            'raw' => ''
+            'raw'  => ''
         ];
 
         $cb = "{\n";
         $pb = "{\n";
         $keys = '';
 
-        foreach ($table->columns as $column) {
-            // \MonitoLib\Dev::pre($column);
+        foreach ($table['columns'] as $column) {
+            $isPrimary = $column['primary'];
+            $object    = $column['object'];
 
-            if (!$column->isPrimary) {
-                $cb .= "\t\"" . $column->object . "\": \"\",\n";
+            if (!$isPrimary) {
+                $cb .= "\t\"" . $object . "\": \"\",\n";
                 $pb = $cb;
-            }
-
-            if ($column->isPrimary) {
-                $keys .= '/{{' . $column->object . '}}';
+            } else {
+                $keys .= '/{{' . $object . '}}';
             }
         }
 
@@ -50,27 +51,45 @@ class Postman extends Creator
                 'listen' => 'test',
                 'script' => [
                     'exec' => [
-                        'var json = pm.response.json();',
                     ],
                     'type' => 'text/javascript'
                 ]
             ]
         ];
 
-        $table->isSecure = true;
+        $var   = [
+            'var json = pm.response.json();'
+        ];
+        $c200  = [
+            'pm.test("Retornou sucesso", function () {', 
+            '    pm.response.to.be.success;', 
+            '});'
+        ];
+        $c201  = [
+            'pm.test("Retornou código 201", function () {', 
+            '    pm.response.to.have.status(201);', 
+            '});'
+        ];
+        $c204  = [
+            'pm.test("Retornou código 204", function () {', 
+            '    pm.response.to.have.status(204);', 
+            '});'
+        ];
+        $body  = [
+            'pm.test("Retornou um objeto", function () {', 
+            '    pm.response.to.have.jsonBody();', 
+            '});'
+        ];
+        $empty = [
+            'pm.test("Não retornou dados", function () {', 
+            '    pm.response.to.not.have.body();', 
+            '});'
+        ];
 
-        if ($table->isSecure) {
-            array_push($tests[0]['script']['exec'], 'pm.test("Tem token de autenticação", function () {', '    pm.response.to.have.header("Authorization");', '});');
-        }
-
-        array_push($tests[0]['script']['exec'], 'pm.test("Retornou sucesso", function () {', '    pm.response.to.be.success;', '});');
-
-        $bodyTests = $tests;
-        $noBodyTests = $tests;
-        
-        array_push($bodyTests[0]['script']['exec'], 'pm.test("Retornou um objeto", function () {', '    pm.response.to.have.jsonBody();', '});');
-        array_push($noBodyTests[0]['script']['exec'], 'pm.test("Não retornou dados", function () {', '    pm.response.to.not.have.body();', '});');
-
+        $createTests = array_merge($c201, $empty);
+        $deleteTests = array_merge($c204, $empty);
+        $getTests    = array_merge($var, $c200, $body);
+        $updateTests = array_merge($c204, $empty);
 
         $cb = substr($cb, 0, -2);
         $pb = substr($pb, 0, -2);
@@ -81,77 +100,117 @@ class Postman extends Creator
         array_shift($path);
 
         $create = [
-            'name' => $table->class,
-            'event' => $noBodyTests,
+            'name' => $class . ' :: create',
+            'event' => [
+                [
+                    'listen' => 'test',
+                    'script' => [
+                        'exec' => $createTests,
+                        'type' => 'text/javascript'
+                    ]
+                ]
+            ],
             'request' => [
                 'method' => 'POST',
                 'header' => $header,
                 'body' => $createBody,
                 'url' => [
-                    'raw' => '{{domain}}' . $table->route,
+                    'raw' => '{{host}}' . $url,
                     'host' => [
-                        '{{domain}}' . $table->route,
+                        '{{host}}' . $url,
                     ]
                 ]
             ],
         ];
 
         $get = [
-            'name' => $table->class,
-            'event' => $bodyTests,
+            'name' => $class . ' :: get by id(s)',
+            'event' => [
+                [
+                    'listen' => 'test',
+                    'script' => [
+                        'exec' => $getTests,
+                        'type' => 'text/javascript'
+                    ]
+                ]
+            ],
             'request' => [
                 'method' => 'GET',
                 'header' => $header,
                 'url' => [
-                    'raw' => '{{domain}}' . $table->route . $keys,
+                    'raw' => '{{host}}' . $url . $keys,
                     'host' => [
-                        '{{domain}}' . $table->route
+                        '{{host}}' . $url
                     ]
                 ]
             ],
         ];
 
         $put = [
-            'name' => $table->class,
-            'event' => $bodyTests,
+            'name' => $class . ' :: update',
+            'event' => [
+                [
+                    'listen' => 'test',
+                    'script' => [
+                        'exec' => $updateTests,
+                        'type' => 'text/javascript'
+                    ]
+                ]
+            ],
             'request' => [
                 'method' => 'PUT',
                 'header' => $header,
                 'body' => $putBody,
                 'url' => [
-                    'raw' => '{{domain}}' . $table->route . $keys,
+                    'raw' => '{{host}}' . $url . $keys,
                     'host' => [
-                        '{{domain}}' . $table->route
+                        '{{host}}' . $url
                     ]
                 ]
             ],
         ];
 
         $delete = [
-            'name' => $table->class,
-            'event' => $noBodyTests,
+            'name' => $class . ' :: delete',
+            'event' => [
+                [
+                    'listen' => 'test',
+                    'script' => [
+                        'exec' => $deleteTests,
+                        'type' => 'text/javascript'
+                    ]
+                ]
+            ],
             'request' => [
                 'method' => 'DELETE',
                 'header' => $header,
                 'url' => [
-                    'raw' => '{{domain}}' . $table->route . $keys,
+                    'raw' => '{{host}}' . $url . $keys,
                     'host' => [
-                        '{{domain}}' . $table->route
+                        '{{host}}' . $url
                     ]
                 ]
             ]
         ];
 
         $getAll = [
-            'name' => $table->class,
-            'event' => $bodyTests,
+            'name' => $class . ' :: get by query',
+            'event' => [
+                [
+                    'listen' => 'test',
+                    'script' => [
+                        'exec' => $getTests,
+                        'type' => 'text/javascript'
+                    ]
+                ]
+            ],
             'request' => [
                 'method' => 'GET',
                 'header' => $header,
                 'url' => [
-                    'raw' => '{{domain}}' . $table->route,
+                    'raw' => '{{host}}' . $url,
                     'host' => [
-                        '{{domain}}' . $table->route,
+                        '{{host}}' . $url,
                     ]
                 ]
             ],
@@ -159,12 +218,12 @@ class Postman extends Creator
 
         $postman = [
             'info' => [
-                'name' => $table->projectName,
+                'name' => $table['namespace'] . '\\' . $class,
                 'schema' => 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
             ],
             'item' => [
                 [
-                    'name' => $table->class,
+                    'name' => $class,
                     'item' => []
                 ]
             ]
@@ -176,12 +235,8 @@ class Postman extends Creator
             $delete['request']['url']['path'] = $path;
         }
 
-        array_push($postman['item'][0]['item'], $create, $put, $get, $delete, $getAll);
+        array_push($postman['item'][0]['item'], $create, $getAll, $put, $get, $delete);
 
-        // echo json_encode($postman, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n\n";exit;
-
-        App::createPath($table->output . 'tests');
-
-        file_put_contents($table->output . 'tests' . DIRECTORY_SEPARATOR . $table->class . '.json', json_encode($postman, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        return json_encode($postman, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 }

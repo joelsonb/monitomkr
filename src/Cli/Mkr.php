@@ -9,66 +9,73 @@ class Mkr extends \MonitoLib\Mcl\Controller
 {
     const VERSION = '1.0.0';
 
-    // mkr:import-tables {connectionName} --to-file --tables=fer* --generate-files --columns=id,nome,active --include-required-columns
-    public function importTables()
+    public function create()
     {
-        // Busca a conexão
-        $connectionName = $this->request->getParam('connectionName')->getValue();
-        $tables = $this->request->getOption('tables')->getValue();
+        $objectName        = $this->request->getParam('objectName')->getValue();
+        $connectionName    = $this->request->getOption('connection-name')->getValue();
+        $tables            = $this->request->getOption('tables')->getValue() ?? [];
+        $columns           = $this->request->getOption('columns')->getValue() ?? [];
+        $namespace         = $this->request->getOption('namespace')->getValue() ?? 'App';
+        $url               = $this->request->getOption('url')->getValue();
+        $controllerMethods = $this->request->getOption('controller-methods')->getValue() ?? false;
 
-        // \MonitoLib\Dev::vde($connectionName);
+        $options                    = new \stdClass();
+        $options->connectionName    = $connectionName;
+        $options->tables            = $tables;
+        $options->columns           = $columns;
+        $options->namespace         = $namespace;
+        $options->objectName        = $objectName;
+        $options->url               = $url;
+        $options->controllerMethods = $controllerMethods;
 
-        // \MonitoLib\Dev::pre($this->request);
+        // Importa as tabelas do banco
+        $options->tablesList = $this->importTables($options);
 
-        // Conecta na conexão informada
-        // $connector = \MonitoLib\Database\Connector::getInstance();
-        // $connector->setConnection($connectionName);
+        // Gera os arquivos
+        $this->generate($options);
+    }
 
+    // mkr:import-tables {connectionName} --to-file --tables=fer* --generate-files --columns=id,nome,active --include-required-columns
+    public function importTables($options)
+    {
+        $connectionName = $options->connectionName;
         // Define a conexão que será usada
-        $connector = \MonitoLib\Database\Connector::getInstance();
-        $connector->setConnectionName($connectionName);
-        $connection = $connector->getConnection();
-
-        // \MonitoLib\Dev::pre($connection);
-
-        $dbms = $connection->getDbms();
-
-        $databaseName = null;
+        \MonitoLib\Database\Connector::setConnectionName($options->connectionName);
+        $connection = \MonitoLib\Database\Connector::getConnection();
+        $tables = $options->tables;
 
         $databaseName = $connection->getDatabase();
 
-        // if ($dbms === 'MySQL') {
-            $databaseName = $connection->getDatabase();
-        // }
+        $dbms  = $connection->getType();
+        $class = '\MonitoMkr\Dao\\' . $dbms;
 
-        $class = '\MonitoMkr\dao\\' . $dbms;
+        $tables = [];
+
+        if (!is_null($options->tables)) {
+            if (!is_array($options->tables)) {
+                $tables = explode(',', $options->tables);
+            }
+        }
 
         $database  = new $class($connection);
         $tableList = $database->listTables($databaseName, $tables);
-
-        // \MonitoLib\Dev::pre($tableList);
-
-        $tableCount = count($tableList);
-
-        // Conta as tabelas
-        if ($tableCount > 10) {
-            \MonitoLib\Dev::e($this->question("Há $tableCount tabelas na conexão! Deseja importar todas?", false));
-            // if ($x = $this->question("Há $tableCount tabelas na conexão! Deseja importar todas?", false)) {
-            // }
-        }
 
         if (empty($tableList)) {
             throw new BadRequest('Nenhuma tabela encontrada!');
         }
 
-        $path = App::getStoragePath('MonitoMkr/' . $connectionName);
+        $tableCount = count($tableList);
+
+        // Conta as tabelas
+        if ($tableCount > 10) {
+            if (!$this->question("Foram listadas $tableCount tabelas. Deseja continuar (y/N)?", false)) {
+                exit;
+            }
+        }
 
         $defaults = $database->getDefaults();
 
-        file_put_contents($path . 'default.json', json_encode($defaults, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK));
-
-        // Gera o arquivo com os padrões da conexão
-        // \MonitoLib\Dev::ee("já caminho: $x\n");
+        $json = [];
 
         // Lista as tabelas
         foreach ($tableList as $table) {
@@ -79,12 +86,12 @@ class Mkr extends \MonitoLib\Mcl\Controller
 
             $t = [
                 'name'       => $tableName,
-                'namespace'  => 'App',
+                'namespace'  => $options->namespace,
                 'type'       => $tableType,
                 'class'      => $className,
                 'object'     => $objectName,
-                'url'        => "/wms/os",
-                'dbms'       => $connection->getDbms(),
+                'url'        => $options->url,
+                'dbms'       => $connection->getType(),
                 'connection' => $connectionName,
             ];
 
@@ -94,15 +101,21 @@ class Mkr extends \MonitoLib\Mcl\Controller
             // \MonitoLib\Dev::pr($t);
             // \MonitoLib\Dev::pre($tableDefaults);
 
-            $json = array_diff($t, $tableDefaults);
+            // $t = array_diff($t, $tableDefaults);
 
-            // \MonitoLib\Dev::pre($json);
+            // \MonitoLib\Dev::pre($t);
+            $columns = [];
 
-            $columns      = null;
+            if (!is_null($options->columns)) {
+                if (!is_array($options->columns)) {
+                    $columns[] = $options->columns;
+                }
+            }
 
             $columnList = $database->listColumns($databaseName, $tableName, $columns);
 
             foreach ($columnList as $column) {
+                // \MonitoLib\Dev::pre($column);
                 $name       = $column->name;
                 $type       = $column->type;
                 $format     = $column->format;
@@ -120,6 +133,7 @@ class Mkr extends \MonitoLib\Mcl\Controller
                 $unique     = $column->unique;
                 $zerofilled = $column->zerofilled;
                 $auto       = $column->auto;
+                $source     = $column->source;
                 $foreign    = $column->foreign;
                 $active     = $column->active;
 
@@ -127,6 +141,7 @@ class Mkr extends \MonitoLib\Mcl\Controller
 
                 $c = [
                     'name'       => $name,
+                    'object'     => Functions::toLowerCamelCase($name),
                     'type'       => $type,
                     'format'     => $format,
                     'label'      => $label,
@@ -143,110 +158,154 @@ class Mkr extends \MonitoLib\Mcl\Controller
                     'unique'     => $unique,
                     'zerofilled' => $zerofilled,
                     'auto'       => $auto,
+                    'source'     => $source,
                     'foreign'    => $foreign,
                     'active'     => $active,
                 ];
 
                 // \MonitoLib\Dev::vd($c);
                 // \MonitoLib\Dev::e("columnDefaults:\n");
-                // \MonitoLib\Dev::vd($columnDefaults);
+                // \MonitoLib\Dev::pre($columnDefaults);
 
-                $c = array_diff_assoc($c, $columnDefaults);
+                // $c = array_diff_assoc($c, $columnDefaults);
 
                 // \MonitoLib\Dev::pre($c);
 
-                $json['columns'][Functions::toLowerCamelCase($name)] = $c;
+                $t['columns'][Functions::toLowerCamelCase($name)] = $c;
+
             }
-
-            // \MonitoLib\Dev::pre($json);
-
-            file_put_contents($path . $table->tableName . '.json', json_encode($json, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK));
-            \MonitoLib\Dev::pre($table);
-            if ($this->verbose()) {
-                $this->write("Importando table $tableName...");
-
-                // Busca as colunas da tabela
-                $this->writeBreakline('ok');
-            }
+            $json[] = $t;
         }
-    }
-    public function generate()
-    {
-        $connectionName = $this->request->getParam('connectionName')->getValue();
 
-        $path = App::getStoragePath('MonitoMkr/' . $connectionName);
+        // \MonitoLib\Dev::pre($json);
+        return $json;
+    }
+    public function generate($options)
+    {
+        // $path = App::getStoragePath('MonitoMkr/' . $options->namespace);
+        $database   = new \MonitoMkr\Lib\Database();
+        $controller = new \MonitoMkr\Lib\Controller();
+        $dao        = new \MonitoMkr\Lib\Dao();
+        $dto        = new \MonitoMkr\Lib\Dto();
+        $model      = new \MonitoMkr\Lib\Model();
+        $postman    = new \MonitoMkr\Lib\Postman();
+        $route      = new \MonitoMkr\Lib\Route();
+
+        // $table->default = $defaults;
+        // $table = Functions AS Functions::arrayMergeRecursive($tableDefaults, $table);
+
+        // \MonitoLib\Dev::vde($database);
+        // \MonitoLib\Dev::pre($options);
+
+        foreach ($options->tablesList as $table) {
+            echo 'gerando tabela ' . $table['name'] . '...';
+
+            $objectName = $table['object'];
+            $className  = $table['class'];
+            $namespace  = $table['namespace'];
+
+            if (is_null($table['url'])) {
+                $table['url'] = strtolower(str_replace('\\', '/', $table['url'] ?? $table['namespace'])) . '/' . str_replace('_', '-', $table['name']);
+            }
+
+            // \MonitoLib\Dev::pre($table);
+
+            $outpath = App::getDocumentRoot() . 'src/' . str_replace('\\', '/', $table['namespace']) . App::DS;
+
+            // \MonitoLib\Dev::pre($table['name']);
+            // Mescla os padrões da coluna do sistema com os padrão do arquivo de padrões
+            // $columnDefaults = Functions AS Functions::arrayMergeRecursive($database->columnDefaults(), $columnDefaults);
+            $columnDefaults = $database->columnDefaults();
+
+
+
+            // Verifica se o controller será gerado
+            // if ($generatesController) {
+                $file   = App::createPath($outpath . 'Controller/') . $className . '.php';
+                // \MonitoLib\Dev::e($file);
+                // Verifica se o arquivo já existe
+                if (file_exists($file)) {
+                    echo "o arquivo ja existe\n";
+                } else {
+                    $f = $controller->create($options, $table);
+                    file_put_contents($file, $f);
+                }
+            // }
+
+            $string = $dao->create($table);
+            $file   = App::createPath($outpath . 'Dao/') . $className . '.php';
+            file_put_contents($file, $string);
+
+            $string = $dto->create($table);
+            $file   = App::createPath($outpath . 'Dto/') . $className . '.php';
+            file_put_contents($file, $string);
+
+            $string = $model->create($table);
+            $file   = App::createPath($outpath . 'Model/') . $className . '.php';
+            file_put_contents($file, $string);
+
+            $string = $route->create($table);
+            $file   = App::getRoutesPath() . str_replace('/', '.', $table['url']) . '.php';
+            file_put_contents($file, $string);
+            // \MonitoLib\Dev::ee($file);
+            // \MonitoLib\Dev::ee($string);
+
+            $string = $postman->create($table);
+            $file   = App::createPath(App::getDocumentRoot() . 'test/Postman') . '/' . str_replace('\\', '_', $table['namespace']) . '_' . $className . '.json';
+            // \MonitoLib\Dev::ee($file);
+            file_put_contents($file, $string);
+            // \MonitoLib\Dev::ee($string);
+
+            echo "ok\n";
+
+
+            // \MonitoLib\Dev::ee($f);
+            // \MonitoLib\Dev::pre($table);
+        }
 
         // Verifica se existe um arquivo de configuração padrão
-        if (!file_exists($path . 'default.json')) {
-            throw new BadRequest('Não há um arquivo de configuração para a conexão!');
-        }
+        // if (!file_exists($path . 'default.json')) {
+        //     throw new BadRequest('Não há um arquivo de configuração para a conexão!');
+        // }
 
-        $defaults = json_decode(file_get_contents($path . 'default.json'), true);
+        // $defaults = json_decode(file_get_contents($path . 'default.json'), true);
 
-        $tableDefaults  = $defaults['table'];
-        $columnDefaults = $defaults['column'];
-
-        $database = new \MonitoMkr\Lib\Database();
-
-        // Mescla os padrões da coluna do sistema com os padrão do arquivo de padrões
-        $columnDefaults = Functions::arrayMergeRecursive($database->columnDefaults(), $columnDefaults);
-
-        
+        // $tableDefaults  = $defaults['table'];
+        // $columnDefaults = $defaults['column'];
 
 
-        $controller = new \MonitoMkr\lib\Controller();
-        $dao        = new \MonitoMkr\lib\Dao();
-        $dto        = new \MonitoMkr\lib\Dto();
-        $model      = new \MonitoMkr\lib\Model();
-        $postman    = new \MonitoMkr\lib\Postman();
-        $router     = new \MonitoMkr\lib\Router();
 
-        $files = scandir($path);
 
-        foreach ($files as $file) {
-            if (!in_array($file, ['.', '..', 'default.json'])) {
-                echo $path . '/' . $file . "\n";
 
-                $table = json_decode(file_get_contents($path . '/' . $file), true);
+        // \MonitoLib\Dev::pr($table);
 
-                // $table->default = $defaults;
-                $table = Functions::arrayMergeRecursive($tableDefaults, $table);
+        // \MonitoLib\Dev::pre($table);
 
-                // \MonitoLib\Dev::pr($table);
+        // $outpath = App::getDocumentRoot() . 'src/' . $table['namespace'] . App::DS;
 
-                // Mescla as opções das colunas com os valores padrão do arquivo default.json
-                $table['columns'] = array_map(function ($item) use ($columnDefaults) {
-                    return Functions::arrayMergeRecursive($columnDefaults, $item);
-                }, $table['columns']);
+        // \MonitoLib\Dev::pre($outpath);
+        $table['output'] = App::getDocumentRoot();
 
-                // \MonitoLib\Dev::pre($table);
 
-                // $outpath = App::getDocumentRoot() . 'src/' . $table['namespace'] . App::DS;
 
-                // \MonitoLib\Dev::pre($outpath);
-                $table['output'] = App::getDocumentRoot();
 
-                // if (($generates & 32) === 32) {
-                    $controller->create($table);
-                // }
-                // if (($generates & 16) === 16) {
-                    $dao->create($table);
-                // }
-                // if (($generates & 8) === 8) {
-                    $dto->create($table);
-                // }
-                // if (($generates & 4) === 4) {
-                    $model->create($table);
-                // }
-                // if (($generates & 2) === 2) {
-                    // $router->create($table);
-                // }
-                // if (($generates & 1) === 1) {
-                    // $postman->create($table);
-                // }
-            }
-        }
+        // Verifica se o arquivo já existe
+        // if (!file_exists($file)) {
+        //     // $dao->create($table);
+        // }
 
-        \MonitoLib\Dev::pre('ok');
+        // $dto->create($table);
+
+        // $model->create($table);
+        // }
+        // if (($generates & 2) === 2) {
+            // $route->create($table);
+        // }
+        // if (($generates & 1) === 1) {
+            // $postman->create($table);
+        // }
+
+
+        echo "processo concluido\n";
     }
 }

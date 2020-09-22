@@ -10,27 +10,6 @@ class Database
         $this->connection = $connection;
     }
 
-    // public function __construct ($connectionDto)
-    // {
-    //     $parameters = new \Stdclass;
-    //     $parameters->server   = $connectionDto->getDbServer();
-    //     $parameters->database = $connectionDto->getDbName();
-    //     $parameters->user     = $connectionDto->getDbUsername();
-    //     $parameters->password = $connectionDto->getDbPassword();
-
-    //     switch ($connectionDto->getDbmsId()) {
-    //         case 1:
-    //             $connection = \MonitoLib\Database\Connector\MySQL::connect($parameters);
-    //             break;
-    //         case 2:
-    //             $connection = \MonitoLib\Database\Connector\Oracle::connect($parameters);
-    //             break;
-    //         default:
-    //             throw new \Exception("Error Processing Request", 1);
-    //     }
-
-    //     $this->connection = $connection->getConnection();
-    // }
     public function columnDefaults()
     {
         return [
@@ -77,11 +56,6 @@ class Database
             }
 
             $label = substr($label, 0, -1);
-            
-            //if (!is_null($frag))
-            //{
-            //  $label .= ' ' . $frag;
-            //}
         }
 
         return $label;
@@ -116,16 +90,6 @@ class Database
         }
 
         $objectName = strtolower(substr($className, 0, 1)) . substr($className, 1);
-        
-        // $singularName = substr($singularName, 0, -1);
-        // $pluralName   = substr($pluralName, 0, -1);
-
-        // $tableDto->setTableName($tableName);
-        // $tableDto->setTableAlias($tableAlias);
-        // $tableDto->setClassName($className);
-        // $tableDto->setObjectName($objectName);
-        // $tableDto->setSingularName($singularName);
-        // $tableDto->setPluralName($pluralName);
 
         $tableDto = new \stdClass;
         $tableDto->databaseName = $table['TABLE_SCHEMA'];

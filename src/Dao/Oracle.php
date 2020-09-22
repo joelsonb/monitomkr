@@ -60,26 +60,34 @@ class Oracle extends \MonitoLib\Database\Dao\Oracle
         ];
 
     }
-    public function listColumns($database, $tableName, $columns = null)
+    public function listColumns(?string $database, string $tableName, ?array $columns = [])
     {
-        $sql = 'SELECT LOWER(column_name) AS column_name, data_type, data_precision, data_scale, nullable, column_id, default_length, '
-            . 'data_default, character_set_name, char_length, '
-            . "(SELECT CASE WHEN cc.constraint_name IS NULL THEN 'N' ELSE 'Y' END FROM user_cons_columns cc "
-            . 'LEFT JOIN user_constraints ct ON ct.constraint_name = cc.constraint_name '
-            . "WHERE cc.table_name = user_tab_columns.table_name AND cc.column_name = user_tab_columns.column_name AND ct.constraint_type = 'P') AS is_primary, 'N' AS is_foreign, 'N' AS is_unique "
-            . "FROM user_tab_columns WHERE UPPER(table_name) = UPPER('$tableName')";
+        $sql = 'SELECT LOWER(cl.column_name) AS column_name, cl.data_type, cl.data_precision, cl.data_scale, cl.nullable, cl.column_id, '
+            . 'cl.default_length, cl.data_default, cl.character_set_name, cl.char_length, ('
+            . "SELECT CASE WHEN cc.constraint_name IS NULL THEN 'N' ELSE 'Y' END "
+            . 'FROM user_cons_columns cc LEFT JOIN user_constraints ct ON ct.constraint_name = cc.constraint_name '
+            . "WHERE cc.table_name = cl.table_name AND cc.column_name = cl.column_name AND ct.constraint_type = 'P') AS is_primary, "
+            . "'N' AS is_foreign, 'N' AS is_unique, "
+            . 'CASE WHEN sq.sequence_name IS NOT NULL THEN 1 ELSE 0 END AS auto, '
+            . "CASE WHEN sq.sequence_name IS NOT NULL THEN 'SEQUENCE.' || sq.sequence_name END AS source "
+            . 'FROM user_tab_columns cl '
+            . "LEFT JOIN user_sequences sq ON sq.sequence_name = SUBSTR(UPPER('SEQ_' || cl.table_name || '_' || cl.column_name), 1, 30) "
+            . "WHERE UPPER(cl.table_name) = UPPER('$tableName')";
 
         if (!empty($columns)) {
-            $sql .= 'AND LOWER(column_name) IN (';
+            $sql .= "AND (cl.nullable = 'N' OR LOWER(cl.column_name) IN (";
 
             foreach ($columns as $column) {
                 $sql .= "LOWER('$column'),";
             }
 
-            $sql = substr($sql, 0, -1) . ')';
+            $sql = substr($sql, 0, -1) . '))';
         }
 
-        $sql .= ' ORDER BY column_id';
+        $sql .= ' ORDER BY cl.column_id';
+
+        // \MonitoLib\Dev::ee($sql);
+
         $stt = $this->parse($sql);
         $exe = $this->execute($stt);
 
@@ -130,7 +138,8 @@ class Oracle extends \MonitoLib\Database\Dao\Oracle
             $column->unsigned   = 0;
             $column->unique     = $r['IS_UNIQUE'] === 'Y' ? 1 : 0;
             $column->zerofilled = 0;
-            $column->auto       = 0;
+            $column->auto       = $r['AUTO'];
+            $column->source     = $r['SOURCE'];
             $column->foreign    = $r['IS_FOREIGN'] === 'Y' ? 1 : 0;
             $column->active     = 1;
 
@@ -139,7 +148,7 @@ class Oracle extends \MonitoLib\Database\Dao\Oracle
             }
 
             if ($column->type === 'date') {
-                $column->format = 'Y-m-d';
+                $column->format = 'Y-m-d H:i:s';
             }
 
             $data[] = $column;
@@ -147,7 +156,7 @@ class Oracle extends \MonitoLib\Database\Dao\Oracle
 
         return $data;
     }
-    public function listConstraints ($database, $tableName, $columName = null)
+    public function listConstraints($database, $tableName, $columName = null)
     {
         $sql = 'SELECT c0.owner AS table_schema, c0.table_name, c0.constraint_name, c0.constraint_type, c1.column_name, c1.position AS ordinal_position, '
             . "'oracle' AS referenced_table_schema, c2.table_name AS referenced_table_name, c2.column_name AS referenced_column_name FROM ("
@@ -179,25 +188,21 @@ class Oracle extends \MonitoLib\Database\Dao\Oracle
 
         return $data;
     }
-    public function listTables ($databaseName, $tableName)
+    public function listTables(string $databaseName, array $tableName = [])
     {
         $sql = "SELECT 'oracle' AS table_schema, table_type, table_name FROM ("
             . "SELECT 'view' AS table_type, LOWER(view_name) AS table_name FROM user_views "
             . 'UNION ALL '
             . "SELECT 'table' AS table_type, LOWER(table_name) AS table_name FROM user_tables)";
 
-        if (!is_null($tableName)) {
-            if (is_array($tableName)) {
-                $sql .= " WHERE UPPER(table_name) IN (";
+        if (!empty($tableName)) {
+            $sql .= " WHERE UPPER(table_name) IN (";
 
-                foreach ($tableName as $table) {
-                    $sql .= "UPPER('$table'),";
-                }
-
-                $sql = substr($sql, 0, -1) . ')';
-            } else {
-                $sql .= " WHERE UPPER(table_name) LIKE UPPER('$tableName')";
+            foreach ($tableName as $table) {
+                $sql .= "UPPER('$table'),";
             }
+
+            $sql = substr($sql, 0, -1) . ')';
         }
 
         // \MonitoLib\Dev::ee($sql);

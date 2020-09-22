@@ -4,7 +4,7 @@ namespace MonitoMkr\Lib;
 use MonitoLib\App;
 use MonitoLib\Functions;
 
-class Dto extends Creator
+class Dto
 {
     const VERSION = '1.0.0';
 
@@ -42,22 +42,20 @@ class Dto extends Creator
         $f = "<?php\n"
             . "namespace {$table['namespace']}\\Dto;\n"
             . "\n"
-            . '// ' . __CLASS__ . ' v' . self::VERSION . ' ' . date('Y-m-d H:i:s') . "\n"
-            . "\n"
             . "class {$table['class']}\n"
             . "{\n"
             . "    const VERSION = '1.0.0';\n"
             . "    /**\n"
             . "     * 1.0.0 - " . date('Y-m-d') . "\n"
             . "     * initial release\n"
+            . "     *\n"
+            . '     * ' . __CLASS__ . ' v' . self::VERSION . ' ' . App::now() . "\n"
             . "     */\n"
+            . "\n"
             . $p
             . $g
             . $s
             . '}';
-
-        // echo "$f\n";
-        // return $f;
-        $this->createFile($table, 'dto.php', $f);
+        return $f;
     }
 }

@@ -4,7 +4,7 @@ namespace MonitoMkr\Lib;
 use MonitoLib\App;
 use MonitoLib\Functions;
 
-class Model extends Creator
+class Model
 {
     const VERSION = '1.0.0';
 
@@ -27,8 +27,8 @@ class Model extends Creator
             if ($column['auto']) {
                 $output .= "$li'auto'      => true,\n";
 
-                if ($column['autoSource'] !== 'auto') {
-                    $output .= "$li'source'    => '{$column['autoSource']}',\n";
+                if ($column['source'] !== 'auto') {
+                    $output .= "$li'source'    => '{$column['source']}',\n";
                 }
             }
 
@@ -71,6 +71,36 @@ class Model extends Creator
 
             if (in_array($column['type'], ['int', 'double']) && $column['unsigned']) {
                 $output .= "$li'unsigned'  => true,\n";
+            }
+
+            if ($table['dbms'] === 'Oracle') {
+                if (in_array($column['name'], [
+                    'dtalt',
+                    'dtinc',
+                    'usralt',
+                    'usrinc',
+                ])) {
+                    $output .= "$li'auto'      => true,\n";
+
+                    switch ($column['name']) {
+                        case 'dtalt':
+                            $source = 'UPDATE.now';
+                            break;
+                        case 'dtinc':
+                            $source = 'INSERT.now';
+                            break;
+                        case 'usralt':
+                            $source = 'UPDATE.userId';
+                            break;
+                        case 'usrinc':
+                            $source = 'INSERT.userId';
+                            break;
+                        default:
+                            $source = null;
+                    }
+
+                    $output .= "$li'source'    => '$source',\n";
+                }
             }
 
 
@@ -121,15 +151,18 @@ class Model extends Creator
         }
 
         $f = "<?php\n"
-            // . $this->renderComments()
             . "\n"
             . "namespace {$table['namespace']}\\Model;\n"
-            . "\n"
-            . '// ' . __CLASS__ . ' v' . self::VERSION . ' ' . App::now() . "\n"
             . "\n"
             . "class {$table['class']} extends \\MonitoLib\\Database\\Model\n"
             . "{\n"
             . "    const VERSION = '1.0.0';\n"
+            . "    /**\n"
+            . "     * 1.0.0 - " . date('Y-m-d') . "\n"
+            . "     * initial release\n"
+            . "     *\n"
+            . '     * ' . __CLASS__ . ' v' . self::VERSION . ' ' . App::now() . "\n"
+            . "     */\n"
             . "\n"
             . "    protected \$tableName = '" . $table['name'] . "';\n"
             . "\n"
@@ -141,8 +174,6 @@ class Model extends Creator
             . $constraints
             . "}"
             ;
-        // echo "$f\n";
-        // return $f;
-        $this->createFile($table, 'model.php', $f);
+        return $f;
     }
 }

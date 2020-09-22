@@ -4,14 +4,14 @@ namespace MonitoMkr\Lib;
 use MonitoLib\App;
 use MonitoLib\Functions;
 
-class Router extends Creator
+class Route
 {
     const VERSION = '1.0.0';
 
     public function create($table)
     {
-        \MonitoLib\Dev::pre($table);
-        $routesFile = $table['output'] . 'config/routes.php';
+        // \MonitoLib\Dev::pre($table);
+        $routesFile = str_replace('\\', '_', strtolower($table['namespace'])) . '.php';
 
         $useNamespace = true;
 
@@ -19,7 +19,6 @@ class Router extends Creator
 
         if (file_exists($routesFile)) {
             $lines = file($routesFile, FILE_IGNORE_NEW_LINES);
-            // \MonitoLib\Dev::pre($lines);
         }
 
         // $routes = [];
@@ -32,13 +31,14 @@ class Router extends Creator
         //     'secure' => false,
         // ];
 
-        $routes[] = "Router::get('/{$table['url']}/:{[0-9]{1,}}', '\\{$table['namespace']}\\controller\\{$table['class']}@get', false);";
-        $routes[] = "Router::get('/{$table['url']}', '\\{$table['namespace']}\\controller\\{$table['class']}@list', false);";
+        $routes[] = "Router::get('/{$table['url']}', '\\{$table['namespace']}\\Controller\\{$table['class']}@get');";
+        $routes[] = "Router::get('/{$table['url']}/:{[0-9]{1,}}', '\\{$table['namespace']}\\Controller\\{$table['class']}@get');";
 
         if ($table['type'] === 'table') {
-            $routes[] = "Router::post('/{$table['url']}', '\\{$table['namespace']}\\controller\\{$table['class']}@create', false);";
-            $routes[] = "Router::put('/{$table['url']}/:{[0-9]{1,}}', '\\{$table['namespace']}\\controller\\{$table['class']}@update', false);";
-            $routes[] = "Router::delete('/{$table['url']}/:{[0-9]{1,}}', '\\{$table['namespace']}\\controller\\{$table['class']}@delete', false);";
+            $routes[] = "Router::post('/{$table['url']}', '\\{$table['namespace']}\\Controller\\{$table['class']}@create');";
+            $routes[] = "Router::put('/{$table['url']}/:{[0-9]{1,}}', '\\{$table['namespace']}\\Controller\\{$table['class']}@update');";
+            $routes[] = "Router::delete('/{$table['url']}', '\\{$table['namespace']}\\Controller\\{$table['class']}@delete');";
+            $routes[] = "Router::delete('/{$table['url']}/:{[0-9]{1,}}', '\\{$table['namespace']}\\Controller\\{$table['class']}@delete');";
         }
 
         foreach ($routes as $route) {
@@ -62,7 +62,7 @@ class Router extends Creator
         }
 
         // echo "$f\n";
-        // return $f;
+        return $f;
         file_put_contents($routesFile, $f);
         // exit;
     }
