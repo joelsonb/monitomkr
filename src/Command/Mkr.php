@@ -89,7 +89,7 @@ class Mkr extends Module
             new class extends Option
             {
                 protected $name  = 'columns';
-                protected $alias = 'c';
+                // protected $alias = 'c';
                 protected $help  = 'Colunas que serão importadas';
             }
         );

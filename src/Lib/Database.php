@@ -122,11 +122,8 @@ class Database
     }
     public function toSingular($string)
     {
-        if (strtolower($string) == 'status') {
+        if (in_array(strtolower($string), ['status', 'tokens', 'wms'])) {
             return $string;
-        }
-        if (strtolower($string) == 'tokens') {
-            return 'token';
         }
         if (preg_match('/ens$/', $string)) {
             $string = substr($string, 0, -3) . 'em';

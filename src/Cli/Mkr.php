@@ -114,6 +114,8 @@ class Mkr extends \MonitoLib\Mcl\Controller
 
             $columnList = $database->listColumns($databaseName, $tableName, $columns);
 
+            // \MonitoLib\Dev::pre($columnList);
+
             foreach ($columnList as $column) {
                 // \MonitoLib\Dev::pre($column);
                 $name       = $column->name;
